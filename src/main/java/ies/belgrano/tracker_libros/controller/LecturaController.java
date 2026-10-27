@@ -1,0 +1,82 @@
+package ies.belgrano.tracker_libros.controller;
+
+import ies.belgrano.tracker_libros.dto.LecturaRespuestaDTO;
+import ies.belgrano.tracker_libros.entity.Usuario;
+import ies.belgrano.tracker_libros.repository.UsuarioRepository;
+import ies.belgrano.tracker_libros.service.LecturaService;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
+import ies.belgrano.tracker_libros.dto.RegistroLecturaDTO;
+import jakarta.validation.Valid;
+import org.springframework.http.ResponseEntity;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/lecturas")
+public class LecturaController {
+
+    private final LecturaService lecturaService;
+    private final UsuarioRepository usuarioRepository;
+
+    public LecturaController(
+            LecturaService lecturaService,
+            UsuarioRepository usuarioRepository) {
+
+        this.lecturaService = lecturaService;
+        this.usuarioRepository = usuarioRepository;
+    }
+
+    // Consultar mi biblioteca
+    @GetMapping
+    public List<LecturaRespuestaDTO> obtenerMiBiblioteca(
+            Authentication authentication) {
+
+        Long usuarioId = obtenerUsuarioId(authentication);
+
+        return lecturaService.obtenerBiblioteca(usuarioId);
+    }
+
+    // Consultar una lectura específica
+    @GetMapping("/{id}")
+    public LecturaRespuestaDTO obtenerLectura(
+            @PathVariable Long id,
+            Authentication authentication) {
+
+        Long usuarioId = obtenerUsuarioId(authentication);
+
+        return lecturaService.obtenerDetalle(id, usuarioId);
+    }
+
+    @PostMapping
+    public ResponseEntity<LecturaRespuestaDTO> agregarLibro(
+            @Valid @RequestBody RegistroLecturaDTO datos,
+            Authentication authentication) {
+
+        Long usuarioId = obtenerUsuarioId(authentication);
+
+        LecturaRespuestaDTO lectura = lecturaService.registrarEnBiblioteca(
+                usuarioId,
+                datos.libroId(),
+                datos.formato());
+
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(lectura);
+    }
+
+    private Long obtenerUsuarioId(Authentication authentication) {
+
+        String email = authentication.getName();
+
+        Usuario usuario = usuarioRepository.findByEmail(email)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Usuario no encontrado"));
+
+        return usuario.getId();
+    }
+}

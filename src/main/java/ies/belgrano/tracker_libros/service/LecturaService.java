@@ -11,11 +11,12 @@ import ies.belgrano.tracker_libros.enums.FormatoLectura;
 import ies.belgrano.tracker_libros.repository.LibroRepository;
 import ies.belgrano.tracker_libros.repository.LecturaRepository;
 import ies.belgrano.tracker_libros.repository.UsuarioRepository;
-
+import ies.belgrano.tracker_libros.dto.LecturaRespuestaDTO;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import ies.belgrano.tracker_libros.dto.LecturaRespuestaDTO;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -49,8 +50,7 @@ public class LecturaService {
         return lecturaRepository.findByIdAndUsuario_Id(id, usuarioId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND,
-                        "Lectura no encontrada"
-                ));
+                        "Lectura no encontrada"));
     }
 
     // Registrar una lectura nueva
@@ -63,20 +63,17 @@ public class LecturaService {
         Usuario usuario = usuarioRepository.findById(usuarioId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND,
-                        "Usuario no encontrado"
-                ));
+                        "Usuario no encontrado"));
 
         Libro libro = libroRepository.findById(libroId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND,
-                        "Libro no encontrado"
-                ));
+                        "Libro no encontrado"));
 
         if (formato == null) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
-                    "El formato es obligatorio"
-            );
+                    "El formato es obligatorio");
         }
 
         if (lecturaRepository.existsByUsuario_IdAndLibro_IdAndFormato(
@@ -84,8 +81,7 @@ public class LecturaService {
 
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
-                    "El usuario ya tiene este libro en ese formato"
-            );
+                    "El usuario ya tiene este libro en ese formato");
         }
 
         Lectura lectura = new Lectura();
@@ -123,8 +119,7 @@ public class LecturaService {
             actualizarProgresoDigital(
                     lectura,
                     porcentajeDigital,
-                    ubicacionDigital
-            );
+                    ubicacionDigital);
         }
 
         actualizarEstadoAutomaticamente(lectura);
@@ -132,37 +127,82 @@ public class LecturaService {
         return lecturaRepository.save(lectura);
     }
 
+    @Transactional(readOnly = true)
+    public List<LecturaRespuestaDTO> obtenerBiblioteca(Long usuarioId) {
+
+        return lecturaRepository.findByUsuario_Id(usuarioId)
+                .stream()
+                .map(this::convertirARespuesta)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public LecturaRespuestaDTO obtenerDetalle(
+            Long lecturaId,
+            Long usuarioId) {
+
+        Lectura lectura = obtenerPorId(lecturaId, usuarioId);
+
+        return convertirARespuesta(lectura);
+    }
+
+    @Transactional
+    public LecturaRespuestaDTO registrarEnBiblioteca(
+            Long usuarioId,
+            Long libroId,
+            FormatoLectura formato) {
+
+        Lectura lectura = registrar(usuarioId, libroId, formato);
+
+        return convertirARespuesta(lectura);
+    }
+
+    private LecturaRespuestaDTO convertirARespuesta(Lectura lectura) {
+
+        Libro libro = lectura.getLibro();
+
+        return new LecturaRespuestaDTO(
+                lectura.getId(),
+                libro.getId(),
+                libro.getTitulo(),
+                libro.getAutor(),
+                libro.getPortadaUrl(),
+                lectura.getFormato(),
+                lectura.getEstado(),
+                lectura.getPaginaActual(),
+                lectura.getPorcentajeProgreso(),
+                lectura.getUbicacionDigital(),
+                lectura.getFechaInicio(),
+                lectura.getFechaFinalizacion(),
+                lectura.getFechaAgregado());
+    }
+
     private void actualizarProgresoFisico(
             Lectura lectura, Integer paginaActual) {
 
-        Integer totalPaginas =
-                lectura.getLibro().getCantidadPaginas();
+        Integer totalPaginas = lectura.getLibro().getCantidadPaginas();
 
         if (paginaActual == null ||
                 paginaActual < 0) {
 
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
-                    "La pagina actual debe ser mayor o igual a cero"
-            );
+                    "La pagina actual debe ser mayor o igual a cero");
         }
 
         if (totalPaginas == null || totalPaginas <= 0) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
-                    "El libro no tiene un total de paginas valido"
-            );
+                    "El libro no tiene un total de paginas valido");
         }
 
         if (paginaActual > totalPaginas) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
-                    "La pagina actual supera el total del libro"
-            );
+                    "La pagina actual supera el total del libro");
         }
 
-        double porcentaje =
-                (paginaActual * 100.0) / totalPaginas;
+        double porcentaje = (paginaActual * 100.0) / totalPaginas;
 
         lectura.setPaginaActual(paginaActual);
         lectura.setPorcentajeProgreso(porcentaje);
@@ -180,8 +220,7 @@ public class LecturaService {
 
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
-                    "El porcentaje debe estar entre 0 y 100"
-            );
+                    "El porcentaje debe estar entre 0 y 100");
         }
 
         lectura.setPorcentajeProgreso(porcentaje);
