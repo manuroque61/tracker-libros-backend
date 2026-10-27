@@ -1,51 +1,79 @@
 
 package ies.belgrano.tracker_libros.config;
 
+import jakarta.servlet.DispatcherType;
+
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.config.http.SessionCreationPolicy;
+
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+
 import org.springframework.security.web.SecurityFilterChain;
 
-import static org.springframework.security.config.Customizer.withDefaults;
-import static org.springframework.http.HttpMethod.GET;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 
 @Configuration
 public class SecurityConfig {
 
-    @Bean
-    public SecurityFilterChain securityFilterChain(
-            HttpSecurity http) throws Exception {
+        @Bean
+        public SecurityFilterChain securityFilterChain(
+                        HttpSecurity http) throws Exception {
 
-        http
-            .authorizeHttpRequests(auth -> auth
+                http
+                                .csrf(csrf -> csrf.disable())
 
-                // Documentación de nuestra API
-                .requestMatchers(
-                    "/swagger-ui/**",
-                    "/v3/api-docs/**"
-                ).permitAll()
+                                .sessionManagement(session -> session
+                                                .sessionCreationPolicy(
+                                                                SessionCreationPolicy.STATELESS))
 
-                // Consulta pública por ISBN
-                .requestMatchers(
-                    GET, "/api/libros/buscar-isbn/*"
-                ).permitAll()
+                                .authorizeHttpRequests(auth -> auth
 
-                // El resto requiere autenticación
-                .anyRequest().authenticated()
-            )
-            .httpBasic(withDefaults())
-            .formLogin(form -> form.disable());
+                                                .dispatcherTypeMatchers(
+                                                                DispatcherType.ERROR)
+                                                .permitAll()
 
-        return http.build();
-    }
+                                                .requestMatchers(
+                                                                "/swagger-ui/**",
+                                                                "/v3/api-docs/**")
+                                                .permitAll()
 
-    @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
-    }
+                                                .requestMatchers(
+                                                                HttpMethod.POST,
+                                                                "/api/auth/registro",
+                                                                "/api/auth/login")
+                                                .permitAll()
+
+                                                .requestMatchers(
+                                                                HttpMethod.GET,
+                                                                "/api/libros/buscar-isbn/*")
+                                                .permitAll()
+
+                                                .anyRequest().authenticated())
+
+                                .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> {
+                                }))
+
+                                .httpBasic(basic -> basic.disable())
+                                .formLogin(form -> form.disable());
+
+                return http.build();
+        }
+
+        @Bean
+        public PasswordEncoder passwordEncoder() {
+                return new BCryptPasswordEncoder();
+        }
+
+        @Bean
+        public AuthenticationManager authenticationManager(
+                        AuthenticationConfiguration configuration) throws Exception {
+
+                return configuration.getAuthenticationManager();
+        }
 }
-
