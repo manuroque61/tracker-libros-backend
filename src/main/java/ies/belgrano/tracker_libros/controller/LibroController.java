@@ -1,4 +1,3 @@
-
 package ies.belgrano.tracker_libros.controller;
 
 import ies.belgrano.tracker_libros.dto.LibroCrearDTO;
@@ -13,8 +12,8 @@ import java.time.format.DateTimeParseException;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/libros")
@@ -34,13 +33,19 @@ public class LibroController {
     public ResponseEntity<LibroExternoDTO> buscarPorIsbn(
             @PathVariable String isbn) {
 
-        if (!isbn.matches("(?:[0-9]{13}|[0-9]{9}[0-9Xx])")) {
+        if (!isbn.matches("(?:\\d{13}|\\d{9}[\\dXx])")) {
             return ResponseEntity.badRequest().build();
         }
 
         return ResponseEntity.ok(
             libroExternoService.buscarPorIsbn(isbn)
         );
+    }
+
+    @GetMapping
+    public ResponseEntity<Iterable<Libro>> listar() {
+
+        return ResponseEntity.ok(libroService.obtenerTodos());
     }
 
     @GetMapping("/{id}")
@@ -55,6 +60,36 @@ public class LibroController {
     @PostMapping
     public ResponseEntity<Libro> crear(
             @Valid @RequestBody LibroCrearDTO datos) {
+
+        Libro libro = libroDesdeDTO(datos);
+
+        Libro guardado = libroService.guardar(libro);
+
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(guardado);
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<Libro> actualizar(
+            @PathVariable Long id,
+            @Valid @RequestBody LibroCrearDTO datos) {
+
+        Libro actualizado = libroService.actualizar(id, libroDesdeDTO(datos));
+
+        return ResponseEntity.ok(actualizado);
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> eliminar(
+            @PathVariable Long id) {
+
+        libroService.eliminar(id);
+
+        return ResponseEntity.noContent().build();
+    }
+
+    private Libro libroDesdeDTO(LibroCrearDTO datos) {
 
         Libro libro = new Libro();
 
@@ -87,14 +122,8 @@ public class LibroController {
                     "Usar AAAA o AAAA-MM-DD"
                 );
             }
-            // Si solo llega el año, no inventamos
-            // una fecha completa: dejamos el campo NULL.
         }
 
-        Libro guardado = libroService.guardar(libro);
-
-        return ResponseEntity
-                .status(HttpStatus.CREATED)
-                .body(guardado);
+        return libro;
     }
 }

@@ -28,11 +28,15 @@ public class LecturaService {
     private final LibroRepository libroRepository;
     private final UsuarioRepository usuarioRepository;
 
+    private final ies.belgrano.tracker_libros.repository.SesionLecturaRepository sesionLecturaRepository;
+
     public LecturaService(
             LecturaRepository lecturaRepository,
             LibroRepository libroRepository,
-            UsuarioRepository usuarioRepository) {
+            UsuarioRepository usuarioRepository,
+            ies.belgrano.tracker_libros.repository.SesionLecturaRepository sesionLecturaRepository) {
 
+        this.sesionLecturaRepository = sesionLecturaRepository;
         this.lecturaRepository = lecturaRepository;
         this.libroRepository = libroRepository;
         this.usuarioRepository = usuarioRepository;
@@ -225,6 +229,55 @@ public class LecturaService {
 
         lectura.setPorcentajeProgreso(porcentaje);
         lectura.setUbicacionDigital(ubicacionDigital);
+    }
+
+    @Transactional
+    public LecturaRespuestaDTO actualizarProgresoDTO(
+            Long id,
+            Long usuarioId,
+            Integer paginaActual,
+            Double porcentaje,
+            String ubicacionDigital) {
+
+        return convertirARespuesta(actualizarProgreso(
+                id, usuarioId, paginaActual, porcentaje, ubicacionDigital));
+    }
+
+    @Transactional
+    public LecturaRespuestaDTO cambiarEstado(
+            Long id,
+            Long usuarioId,
+            EstadoLectura estado) {
+
+        Lectura lectura = obtenerPorId(id, usuarioId);
+
+        lectura.setEstado(estado);
+
+        if (estado == EstadoLectura.TERMINADO) {
+            if (lectura.getFechaInicio() == null) {
+                lectura.setFechaInicio(LocalDate.now());
+            }
+            if (lectura.getFechaFinalizacion() == null) {
+                lectura.setFechaFinalizacion(LocalDate.now());
+            }
+        } else {
+            lectura.setFechaFinalizacion(null);
+            if (estado == EstadoLectura.LEYENDO
+                    && lectura.getFechaInicio() == null) {
+                lectura.setFechaInicio(LocalDate.now());
+            }
+        }
+
+        return convertirARespuesta(lecturaRepository.save(lectura));
+    }
+
+    @Transactional
+    public void eliminar(Long id, Long usuarioId) {
+
+        Lectura lectura = obtenerPorId(id, usuarioId);
+
+        sesionLecturaRepository.deleteByLectura_Id(lectura.getId());
+        lecturaRepository.delete(lectura);
     }
 
     private void actualizarEstadoAutomaticamente(Lectura lectura) {
