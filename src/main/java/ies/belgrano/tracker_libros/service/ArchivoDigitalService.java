@@ -15,6 +15,7 @@ import org.springframework.web.server.ResponseStatusException;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
 import java.net.MalformedURLException;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -34,14 +35,18 @@ public class ArchivoDigitalService {
     private final ArchivoDigitalRepository archivoRepository;
     private final LecturaService lecturaService;
     private final Path directorio;
+    private final AlmacenamientoDigitalService almacenamientoDigitalService;
 
     public ArchivoDigitalService(
             ArchivoDigitalRepository archivoRepository,
             LecturaService lecturaService,
+            AlmacenamientoDigitalService almacenamientoDigitalService,
             @Value("${app.storage.location}") String ubicacion) {
 
         this.archivoRepository = archivoRepository;
         this.lecturaService = lecturaService;
+        this.almacenamientoDigitalService = almacenamientoDigitalService;
+
         this.directorio = Path.of(ubicacion)
                 .toAbsolutePath()
                 .normalize();
@@ -157,6 +162,26 @@ public class ArchivoDigitalService {
             borrarSilenciosamente(destino);
             throw e;
         }
+    }
+
+    @Transactional
+    public void eliminarArchivo(
+            Long lecturaId,
+            Long usuarioId) {
+
+        ArchivoDigital archivo = buscarArchivo(
+                lecturaId,
+                usuarioId);
+
+        String nombreAlmacenado = archivo.getNombreAlmacenado();
+
+        // Programar limpieza fisica despues del commit.
+        almacenamientoDigitalService.eliminarDespuesDelCommit(
+                nombreAlmacenado);
+
+        // Eliminar el registro de MySQL.
+        archivoRepository.delete(archivo);
+        archivoRepository.flush();
     }
 
     public ArchivoDigitalRespuestaDTO obtenerInformacion(

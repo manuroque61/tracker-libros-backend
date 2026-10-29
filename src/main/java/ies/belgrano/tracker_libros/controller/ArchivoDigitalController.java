@@ -116,4 +116,19 @@ public class ArchivoDigitalController {
 
                 return usuario.getId();
         }
+
+        @DeleteMapping("/{id}/archivo")
+        public ResponseEntity<Void> eliminarArchivo(
+                        @PathVariable Long id,
+                        Authentication authentication) {
+
+                Long usuarioId = obtenerUsuarioId(authentication);
+
+                archivoService.eliminarArchivo(
+                                id,
+                                usuarioId);
+
+                return ResponseEntity.noContent().build();
+        }
+
 }

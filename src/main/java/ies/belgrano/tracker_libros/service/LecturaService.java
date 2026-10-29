@@ -17,6 +17,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import ies.belgrano.tracker_libros.dto.LecturaRespuestaDTO;
+import ies.belgrano.tracker_libros.entity.ArchivoDigital;
+import ies.belgrano.tracker_libros.repository.ArchivoDigitalRepository;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -27,15 +29,21 @@ public class LecturaService {
     private final LecturaRepository lecturaRepository;
     private final LibroRepository libroRepository;
     private final UsuarioRepository usuarioRepository;
+    private final ArchivoDigitalRepository archivoDigitalRepository;
+    private final AlmacenamientoDigitalService almacenamientoDigitalService;
 
     public LecturaService(
             LecturaRepository lecturaRepository,
             LibroRepository libroRepository,
-            UsuarioRepository usuarioRepository) {
+            UsuarioRepository usuarioRepository,
+            ArchivoDigitalRepository archivoDigitalRepository,
+            AlmacenamientoDigitalService almacenamientoDigitalService) {
 
         this.lecturaRepository = lecturaRepository;
         this.libroRepository = libroRepository;
         this.usuarioRepository = usuarioRepository;
+        this.archivoDigitalRepository = archivoDigitalRepository;
+        this.almacenamientoDigitalService = almacenamientoDigitalService;
     }
 
     // Obtener las lecturas de un usuario
@@ -223,9 +231,26 @@ public class LecturaService {
             Long lecturaId,
             Long usuarioId) {
 
-        Lectura lectura = obtenerPorId(lecturaId, usuarioId);
+        Lectura lectura = obtenerPorId(
+                lecturaId,
+                usuarioId);
+
+        archivoDigitalRepository
+                .findByLectura_IdAndLectura_Usuario_Id(
+                        lecturaId,
+                        usuarioId)
+                .ifPresent(archivo -> {
+
+                    almacenamientoDigitalService
+                            .eliminarDespuesDelCommit(
+                                    archivo.getNombreAlmacenado());
+
+                    archivoDigitalRepository.delete(archivo);
+                    archivoDigitalRepository.flush();
+                });
 
         lecturaRepository.delete(lectura);
+        lecturaRepository.flush();
     }
 
     private LecturaRespuestaDTO convertirARespuesta(Lectura lectura) {
