@@ -50,8 +50,13 @@ public class SecurityConfig {
                                                 .permitAll()
 
                                                 .requestMatchers(
-                                                                HttpMethod.GET,
-                                                                "/api/libros/buscar-isbn/*")
+                                                                 HttpMethod.GET,
+                                                                 "/api/libros/buscar-isbn/*")
+                                                .permitAll()
+
+                                                .requestMatchers(
+                                                                 HttpMethod.GET,
+                                                                 "/api/gutenberg/**")
                                                 .permitAll()
 
                                                 .anyRequest().authenticated())
