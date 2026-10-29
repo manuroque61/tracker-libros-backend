@@ -12,6 +12,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.UrlResource;
+import java.net.MalformedURLException;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -154,6 +157,69 @@ public class ArchivoDigitalService {
             borrarSilenciosamente(destino);
             throw e;
         }
+    }
+
+    public ArchivoDigitalRespuestaDTO obtenerInformacion(
+            Long lecturaId,
+            Long usuarioId) {
+
+        ArchivoDigital archivo = buscarArchivo(
+                lecturaId,
+                usuarioId);
+
+        return convertirARespuesta(archivo);
+    }
+
+    public Resource obtenerContenido(
+            Long lecturaId,
+            Long usuarioId) {
+
+        ArchivoDigital archivo = buscarArchivo(
+                lecturaId,
+                usuarioId);
+
+        Path ruta = directorio
+                .resolve(archivo.getNombreAlmacenado())
+                .normalize();
+
+        // Comprobar que la ruta permanezca dentro
+        // del directorio privado de almacenamiento.
+        if (!ruta.startsWith(directorio)) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Ruta de archivo invalida");
+        }
+
+        try {
+            Resource recurso = new UrlResource(ruta.toUri());
+
+            if (!recurso.exists() || !recurso.isReadable()) {
+                throw new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "El archivo no existe en el servidor");
+            }
+
+            return recurso;
+
+        } catch (MalformedURLException e) {
+            throw new ResponseStatusException(
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    "No se pudo acceder al archivo",
+                    e);
+        }
+    }
+
+    private ArchivoDigital buscarArchivo(
+            Long lecturaId,
+            Long usuarioId) {
+
+        return archivoRepository
+                .findByLectura_IdAndLectura_Usuario_Id(
+                        lecturaId,
+                        usuarioId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Archivo digital no encontrado"));
     }
 
     private boolean contenidoValido(
