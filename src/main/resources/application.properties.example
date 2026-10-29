@@ -18,3 +18,9 @@ spring.jpa.properties.hibernate.format_sql=true
 security.jwt.secret=GENERAR_CLAVE_BASE64_DE_32_BYTES
 
 
+# Almacenamiento de libros digitales
+app.storage.location=./storage/libros
+
+# Limites para subida de archivos
+spring.servlet.multipart.max-file-size=50MB
+spring.servlet.multipart.max-request-size=50MB

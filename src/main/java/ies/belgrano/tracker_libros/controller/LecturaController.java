@@ -13,6 +13,7 @@ import ies.belgrano.tracker_libros.dto.RegistroLecturaDTO;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import ies.belgrano.tracker_libros.dto.ActualizarProgresoDTO;
+import ies.belgrano.tracker_libros.dto.ActualizarEstadoDTO;
 
 import java.util.List;
 
@@ -83,6 +84,32 @@ public class LecturaController {
                 datos.paginaActual(),
                 datos.porcentajeDigital(),
                 datos.ubicacionDigital());
+    }
+
+    @PatchMapping("/{id}/estado")
+    public LecturaRespuestaDTO cambiarEstado(
+            @PathVariable Long id,
+            @Valid @RequestBody ActualizarEstadoDTO datos,
+            Authentication authentication) {
+
+        Long usuarioId = obtenerUsuarioId(authentication);
+
+        return lecturaService.cambiarEstado(
+                id,
+                usuarioId,
+                datos.estado());
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> eliminarLectura(
+            @PathVariable Long id,
+            Authentication authentication) {
+
+        Long usuarioId = obtenerUsuarioId(authentication);
+
+        lecturaService.eliminarDeBiblioteca(id, usuarioId);
+
+        return ResponseEntity.noContent().build();
     }
 
     private Long obtenerUsuarioId(Authentication authentication) {

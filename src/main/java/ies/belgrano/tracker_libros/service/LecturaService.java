@@ -175,6 +175,59 @@ public class LecturaService {
         return convertirARespuesta(lectura);
     }
 
+    @Transactional
+    public LecturaRespuestaDTO cambiarEstado(
+            Long lecturaId,
+            Long usuarioId,
+            EstadoLectura nuevoEstado) {
+
+        Lectura lectura = obtenerPorId(lecturaId, usuarioId);
+
+        if (nuevoEstado == null) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "El estado es obligatorio");
+        }
+
+        lectura.setEstado(nuevoEstado);
+
+        switch (nuevoEstado) {
+
+            case LEYENDO, PAUSADO, ABANDONADO -> {
+                if (lectura.getFechaInicio() == null) {
+                    lectura.setFechaInicio(LocalDate.now());
+                }
+
+                lectura.setFechaFinalizacion(null);
+            }
+
+            case TERMINADO -> {
+                if (lectura.getFechaInicio() == null) {
+                    lectura.setFechaInicio(LocalDate.now());
+                }
+
+                lectura.setFechaFinalizacion(LocalDate.now());
+            }
+
+            case PENDIENTE -> {
+                lectura.setFechaInicio(null);
+                lectura.setFechaFinalizacion(null);
+            }
+        }
+
+        return convertirARespuesta(lecturaRepository.save(lectura));
+    }
+
+    @Transactional
+    public void eliminarDeBiblioteca(
+            Long lecturaId,
+            Long usuarioId) {
+
+        Lectura lectura = obtenerPorId(lecturaId, usuarioId);
+
+        lecturaRepository.delete(lectura);
+    }
+
     private LecturaRespuestaDTO convertirARespuesta(Lectura lectura) {
 
         Libro libro = lectura.getLibro();
