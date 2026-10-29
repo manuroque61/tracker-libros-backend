@@ -157,6 +157,24 @@ public class LecturaService {
         return convertirARespuesta(lectura);
     }
 
+    @Transactional
+    public LecturaRespuestaDTO actualizarProgresoEnBiblioteca(
+            Long lecturaId,
+            Long usuarioId,
+            Integer paginaActual,
+            Double porcentajeDigital,
+            String ubicacionDigital) {
+
+        Lectura lectura = actualizarProgreso(
+                lecturaId,
+                usuarioId,
+                paginaActual,
+                porcentajeDigital,
+                ubicacionDigital);
+
+        return convertirARespuesta(lectura);
+    }
+
     private LecturaRespuestaDTO convertirARespuesta(Lectura lectura) {
 
         Libro libro = lectura.getLibro();

@@ -12,6 +12,7 @@ import org.springframework.web.server.ResponseStatusException;
 import ies.belgrano.tracker_libros.dto.RegistroLecturaDTO;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import ies.belgrano.tracker_libros.dto.ActualizarProgresoDTO;
 
 import java.util.List;
 
@@ -66,6 +67,22 @@ public class LecturaController {
         return ResponseEntity
                 .status(HttpStatus.CREATED)
                 .body(lectura);
+    }
+
+    @PatchMapping("/{id}/progreso")
+    public LecturaRespuestaDTO actualizarProgreso(
+            @PathVariable Long id,
+            @Valid @RequestBody ActualizarProgresoDTO datos,
+            Authentication authentication) {
+
+        Long usuarioId = obtenerUsuarioId(authentication);
+
+        return lecturaService.actualizarProgresoEnBiblioteca(
+                id,
+                usuarioId,
+                datos.paginaActual(),
+                datos.porcentajeDigital(),
+                datos.ubicacionDigital());
     }
 
     private Long obtenerUsuarioId(Authentication authentication) {
