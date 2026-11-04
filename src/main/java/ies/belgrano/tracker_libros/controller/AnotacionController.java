@@ -47,7 +47,7 @@ public class AnotacionController {
         Long usuarioId = usuarioActualService.obtenerId(authentication);
 
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(anotacionService.crear(usuarioId, datos));
+                .body(anotacionService.crear(usuarioId, libroId, datos));
     }
 
     @DeleteMapping("/{libroId}/{id}")

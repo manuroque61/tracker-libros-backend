@@ -3,7 +3,9 @@ package ies.belgrano.tracker_libros.service;
 import ies.belgrano.tracker_libros.dto.AnotacionCrearDTO;
 import ies.belgrano.tracker_libros.dto.AnotacionRespuestaDTO;
 import ies.belgrano.tracker_libros.entity.Anotacion;
+import ies.belgrano.tracker_libros.entity.Lectura;
 import ies.belgrano.tracker_libros.repository.AnotacionRepository;
+import ies.belgrano.tracker_libros.repository.LecturaRepository;
 import ies.belgrano.tracker_libros.repository.LibroRepository;
 import ies.belgrano.tracker_libros.repository.UsuarioRepository;
 
@@ -20,15 +22,18 @@ public class AnotacionService {
     private final AnotacionRepository anotacionRepository;
     private final LibroRepository libroRepository;
     private final UsuarioRepository usuarioRepository;
+    private final LecturaRepository lecturaRepository;
 
     public AnotacionService(
             AnotacionRepository anotacionRepository,
             LibroRepository libroRepository,
-            UsuarioRepository usuarioRepository) {
+            UsuarioRepository usuarioRepository,
+            LecturaRepository lecturaRepository) {
 
         this.anotacionRepository = anotacionRepository;
         this.libroRepository = libroRepository;
         this.usuarioRepository = usuarioRepository;
+        this.lecturaRepository = lecturaRepository;
     }
 
     @Transactional(readOnly = true)
@@ -47,6 +52,7 @@ public class AnotacionService {
     @Transactional
     public AnotacionRespuestaDTO crear(
             Long usuarioId,
+            Long libroId,
             AnotacionCrearDTO datos) {
 
         Anotacion anotacion = new Anotacion();
@@ -56,12 +62,27 @@ public class AnotacionService {
                         HttpStatus.NOT_FOUND,
                         "Usuario no encontrado")));
 
-        anotacion.setLibro(libroRepository.findById(datos.libroId())
+        anotacion.setLibro(libroRepository.findById(libroId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND,
                         "Libro no encontrado")));
 
-        anotacion.setLecturaId(datos.lecturaId());
+        if (datos.lecturaId() != null) {
+            Lectura lectura = lecturaRepository
+                    .findByIdAndUsuario_Id(datos.lecturaId(), usuarioId)
+                    .orElseThrow(() -> new ResponseStatusException(
+                            HttpStatus.NOT_FOUND,
+                            "Lectura no encontrada"));
+
+            if (!lectura.getLibro().getId().equals(libroId)) {
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "La lectura no pertenece a ese libro");
+            }
+
+            anotacion.setLecturaId(lectura.getId());
+        }
+
         anotacion.setTipo(datos.tipo());
         anotacion.setTexto(datos.texto());
         anotacion.setCita(datos.cita());

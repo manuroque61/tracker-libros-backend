@@ -123,6 +123,19 @@ public class Libro {
         this.portadaUrl = portadaUrl;
     }
 
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        Libro otro = (Libro) o;
+        return id != null && id.equals(otro.id);
+    }
+
+    @Override
+    public int hashCode() {
+        return getClass().hashCode();
+    }
+
     
     
 }

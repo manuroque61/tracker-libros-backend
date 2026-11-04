@@ -1,6 +1,8 @@
 
 package ies.belgrano.tracker_libros.entity;
 
+import ies.belgrano.tracker_libros.enums.Rol;
+
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
@@ -20,6 +22,10 @@ public class Usuario {
 
     @Column(name = "password_hash", nullable = false)
     private String passwordHash;
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private Rol rol;
 
     @Column(name = "fecha_registro", nullable = false, updatable = false)
     private LocalDateTime fechaRegistro;
@@ -68,12 +74,37 @@ public class Usuario {
         this.passwordHash = passwordHash;
     }
 
+    public Rol getRol() {
+        return rol;
+    }
+
+    public void setRol(Rol rol) {
+        this.rol = rol;
+    }
+
+    public Rol rolEfectivo() {
+        return rol == null ? Rol.USUARIO : rol;
+    }
+
     public LocalDateTime getFechaRegistro() {
         return fechaRegistro;
     }
 
     public void setFechaRegistro(LocalDateTime fechaRegistro) {
         this.fechaRegistro = fechaRegistro;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        Usuario otro = (Usuario) o;
+        return id != null && id.equals(otro.id);
+    }
+
+    @Override
+    public int hashCode() {
+        return getClass().hashCode();
     }
 
 

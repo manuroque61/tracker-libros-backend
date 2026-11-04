@@ -158,6 +158,19 @@ public class Lectura {
         this.fechaAgregado = fechaAgregado;
     }
 
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        Lectura otra = (Lectura) o;
+        return id != null && id.equals(otra.id);
+    }
+
+    @Override
+    public int hashCode() {
+        return getClass().hashCode();
+    }
+
     
 
 }

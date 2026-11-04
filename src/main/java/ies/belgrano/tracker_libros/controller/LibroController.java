@@ -5,8 +5,11 @@ import ies.belgrano.tracker_libros.dto.LibroExternoDTO;
 import ies.belgrano.tracker_libros.entity.Libro;
 import ies.belgrano.tracker_libros.service.LibroExternoService;
 import ies.belgrano.tracker_libros.service.LibroService;
+import ies.belgrano.tracker_libros.service.RateLimitService;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 
@@ -19,19 +22,30 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/libros")
 public class LibroController {
 
+    private static final int MAX_BUSQUEDAS_ISBN = 30;
+    private static final Duration VENTANA_ISBN = Duration.ofMinutes(1);
+
     private final LibroExternoService libroExternoService;
     private final LibroService libroService;
+    private final RateLimitService rateLimitService;
 
     public LibroController(
             LibroExternoService libroExternoService,
-            LibroService libroService) {
+            LibroService libroService,
+            RateLimitService rateLimitService) {
         this.libroExternoService = libroExternoService;
         this.libroService = libroService;
+        this.rateLimitService = rateLimitService;
     }
 
     @GetMapping("/buscar-isbn/{isbn}")
     public ResponseEntity<LibroExternoDTO> buscarPorIsbn(
-            @PathVariable String isbn) {
+            @PathVariable String isbn,
+            HttpServletRequest request) {
+
+        String clave = "isbn|" + request.getRemoteAddr();
+        rateLimitService.verificar(clave, MAX_BUSQUEDAS_ISBN);
+        rateLimitService.contar(clave, VENTANA_ISBN);
 
         if (!isbn.matches("(?:\\d{13}|\\d{9}[\\dXx])")) {
             return ResponseEntity.badRequest().build();

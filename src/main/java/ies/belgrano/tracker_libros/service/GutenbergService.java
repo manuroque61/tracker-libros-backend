@@ -1,9 +1,16 @@
 package ies.belgrano.tracker_libros.service;
 
 import ies.belgrano.tracker_libros.dto.GutenbergLibroDTO;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
@@ -11,7 +18,16 @@ import org.springframework.web.client.RestClient;
 @Service
 public class GutenbergService {
 
+    private static final Logger log =
+            LoggerFactory.getLogger(GutenbergService.class);
+
+    private static final int MAX_CACHE = 100;
+    private static final Duration TTL_CACHE = Duration.ofMinutes(10);
+
+    private record EntradaCache(Instant expira, List<GutenbergLibroDTO> libros) {}
+
     private final RestClient restClient;
+    private final Map<String, EntradaCache> cache;
 
     public GutenbergService() {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
@@ -21,9 +37,35 @@ public class GutenbergService {
                 .baseUrl("https://gutendex.com")
                 .requestFactory(factory)
                 .build();
+
+        this.cache = Collections.synchronizedMap(
+                new LinkedHashMap<>(16, 0.75f, false) {
+                        @Override
+                        protected boolean removeEldestEntry(
+                                        Map.Entry<String, EntradaCache> eldest) {
+                                return size() > MAX_CACHE;
+                        }
+                });
     }
 
     public List<GutenbergLibroDTO> buscarLibros(String idioma, String busqueda) {
+
+        String clave = (idioma == null ? "" : idioma) + "|"
+                + (busqueda == null ? "" : busqueda.trim().toLowerCase(Locale.ROOT));
+
+        Instant ahora = Instant.now();
+        EntradaCache guardada = cache.get(clave);
+
+        if (guardada != null && guardada.expira().isAfter(ahora)) {
+            return guardada.libros();
+        }
+
+        List<GutenbergLibroDTO> resultados = consultarGutendex(idioma, busqueda);
+        cache.put(clave, new EntradaCache(ahora.plus(TTL_CACHE), resultados));
+        return resultados;
+    }
+
+    private List<GutenbergLibroDTO> consultarGutendex(String idioma, String busqueda) {
         try {
             Map<?, ?> respuesta = restClient.get()
                     .uri(uriBuilder -> uriBuilder
@@ -35,11 +77,15 @@ public class GutenbergService {
                     .body(Map.class);
 
             if (respuesta == null) {
+                log.warn("Gutendex devolvio una respuesta vacia; "
+                        + "se usan libros de ejemplo");
                 return obtenerLibrosEjemplo(busqueda);
             }
 
             Object resultados = respuesta.get("results");
             if (!(resultados instanceof List<?> lista)) {
+                log.warn("Gutendex devolvio un formato inesperado; "
+                        + "se usan libros de ejemplo");
                 return obtenerLibrosEjemplo(busqueda);
             }
 
@@ -154,7 +200,8 @@ public class GutenbergService {
                 return libros;
             }
         } catch (Exception e) {
-            // Si gutendex falla, usar ejemplos
+            log.warn("Gutendex no responde ({}); "
+                    + "se usan libros de ejemplo", e.getMessage());
         }
         return obtenerLibrosEjemplo(busqueda);
     }

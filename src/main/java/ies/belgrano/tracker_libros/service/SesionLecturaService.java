@@ -7,8 +7,10 @@ import ies.belgrano.tracker_libros.entity.SesionLectura;
 import ies.belgrano.tracker_libros.enums.FormatoLectura;
 import ies.belgrano.tracker_libros.repository.SesionLecturaRepository;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
@@ -45,6 +47,18 @@ public class SesionLecturaService {
             SesionCrearDTO datos) {
 
         Lectura lectura = lecturaService.obtenerPorId(lecturaId, usuarioId);
+
+        Integer totalPaginas = lectura.getLibro().getCantidadPaginas();
+
+        if (lectura.getFormato() == FormatoLectura.FISICO &&
+                datos.paginasLeidas() != null &&
+                totalPaginas != null &&
+                datos.paginasLeidas() > totalPaginas) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Las paginas leidas superan el total del libro");
+        }
 
         SesionLectura sesion = new SesionLectura();
         sesion.setLectura(lectura);

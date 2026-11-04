@@ -17,4 +17,8 @@ spring.jpa.properties.hibernate.format_sql=true
 # Seguridad 
 security.jwt.secret=GENERAR_CLAVE_BASE64_DE_32_BYTES
 
+# Swagger: en produccion definir SPRINGDOC_ENABLED=false
+springdoc.api-docs.enabled=${SPRINGDOC_ENABLED:true}
+springdoc.swagger-ui.enabled=${SPRINGDOC_ENABLED:true}
+
 

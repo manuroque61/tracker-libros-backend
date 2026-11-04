@@ -7,8 +7,10 @@ import java.util.List;
 import java.util.Map;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
@@ -17,22 +19,36 @@ public class LibroExternoService {
     private final RestClient restClient;
 
     public LibroExternoService() {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(5000);
+        factory.setReadTimeout(8000);
+
         this.restClient = RestClient.builder()
                 .baseUrl("https://openlibrary.org")
+                .requestFactory(factory)
                 .build();
     }
 
     public LibroExternoDTO buscarPorIsbn(String isbn) {
 
-        Map<?, ?> respuesta = restClient.get()
-                .uri(uriBuilder -> uriBuilder
-                        .path("/api/books")
-                        .queryParam("bibkeys", "ISBN:" + isbn)
-                        .queryParam("format", "json")
-                        .queryParam("jscmd", "data")
-                        .build())
-                .retrieve()
-                .body(Map.class);
+        Map<?, ?> respuesta;
+
+        try {
+            respuesta = restClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/api/books")
+                            .queryParam("bibkeys", "ISBN:" + isbn)
+                            .queryParam("format", "json")
+                            .queryParam("jscmd", "data")
+                            .build())
+                    .retrieve()
+                    .body(Map.class);
+        } catch (RestClientException e) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_GATEWAY,
+                    "Open Library no responde. Intenta de nuevo mas tarde"
+            );
+        }
 
         if (respuesta == null) {
             throw new ResponseStatusException(

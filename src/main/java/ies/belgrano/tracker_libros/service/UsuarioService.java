@@ -4,6 +4,7 @@ package ies.belgrano.tracker_libros.service;
 import ies.belgrano.tracker_libros.dto.RegistroUsuarioDTO;
 import ies.belgrano.tracker_libros.dto.UsuarioRespuestaDTO;
 import ies.belgrano.tracker_libros.entity.Usuario;
+import ies.belgrano.tracker_libros.enums.Rol;
 import ies.belgrano.tracker_libros.repository.UsuarioRepository;
 
 import org.springframework.http.HttpStatus;
@@ -46,6 +47,7 @@ public class UsuarioService {
 
         usuario.setNombre(datos.nombre().trim());
         usuario.setEmail(email);
+        usuario.setRol(Rol.USUARIO);
 
         usuario.setPasswordHash(
             passwordEncoder.encode(datos.password())
@@ -57,7 +59,8 @@ public class UsuarioService {
             guardado.getId(),
             guardado.getNombre(),
             guardado.getEmail(),
-            guardado.getFechaRegistro()
+            guardado.getFechaRegistro(),
+            guardado.rolEfectivo()
         );
     }
 }

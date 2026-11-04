@@ -40,7 +40,8 @@ public class UsuarioController {
                 usuario.getId(),
                 usuario.getNombre(),
                 usuario.getEmail(),
-                usuario.getFechaRegistro()
+                usuario.getFechaRegistro(),
+                usuario.rolEfectivo()
         );
 
         return ResponseEntity.ok(respuesta);

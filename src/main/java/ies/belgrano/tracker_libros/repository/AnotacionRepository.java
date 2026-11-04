@@ -15,4 +15,7 @@ public interface AnotacionRepository
             Long libroId);
 
     Optional<Anotacion> findByIdAndUsuario_Id(Long id, Long usuarioId);
+
+    // Comprobar si el libro tiene anotaciones asociadas
+    boolean existsByLibro_Id(Long libroId);
 }

@@ -6,6 +6,8 @@ import ies.belgrano.tracker_libros.enums.EstadoLectura;
 import ies.belgrano.tracker_libros.enums.FormatoLectura;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
@@ -40,4 +42,40 @@ public interface LecturaRepository
             Long libroId,
             FormatoLectura formato
     );
+
+    // Comprobar si el libro tiene lecturas asociadas
+    boolean existsByLibro_Id(Long libroId);
+
+    // Contar libros distintos del usuario (con filtro opcional de formato)
+    @Query("""
+            SELECT COUNT(DISTINCT l.libro.id)
+            FROM Lectura l
+            WHERE l.usuario.id = :usuarioId
+              AND (:formato IS NULL OR l.formato = :formato)
+            """)
+    long contarLibrosDistintos(
+            @Param("usuarioId") Long usuarioId,
+            @Param("formato") FormatoLectura formato);
+
+    // Contar lecturas del usuario agrupadas por estado
+    @Query("""
+            SELECT l.estado, COUNT(l)
+            FROM Lectura l
+            WHERE l.usuario.id = :usuarioId
+              AND (:formato IS NULL OR l.formato = :formato)
+            GROUP BY l.estado
+            """)
+    List<Object[]> contarPorEstado(
+            @Param("usuarioId") Long usuarioId,
+            @Param("formato") FormatoLectura formato);
+
+    // Contar lecturas del usuario agrupadas por formato (sin filtro)
+    @Query("""
+            SELECT l.formato, COUNT(l)
+            FROM Lectura l
+            WHERE l.usuario.id = :usuarioId
+            GROUP BY l.formato
+            """)
+    List<Object[]> contarPorFormato(
+            @Param("usuarioId") Long usuarioId);
 }

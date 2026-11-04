@@ -95,4 +95,17 @@ public class SesionLectura {
     public void setNota(String nota) {
         this.nota = nota;
     }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        SesionLectura otra = (SesionLectura) o;
+        return id != null && id.equals(otra.id);
+    }
+
+    @Override
+    public int hashCode() {
+        return getClass().hashCode();
+    }
 }
