@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import org.springframework.beans.factory.annotation.Value;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,13 +28,26 @@ public class GutenbergService {
     private static final Duration TTL_CACHE = Duration.ofMinutes(10);
     private static final int TAMANO_PAGINA = 32;
     private static final String RAPIDAPI_HOST = "project-gutenberg-free-books-api1.p.rapidapi.com";
+    private static final String GUTENDEX_BASE = "https://gutendex.com";
     private record EntradaCache(Instant expira, GutenbergPaginaDTO pagina) {}
 
+    private final RestClient gutendexClient;
     private final RestClient rapidApiClient;
     private final String rapidApiKey;
+    private final int gutendexTimeoutMs;
     private final Map<String, EntradaCache> cache;
 
-    public GutenbergService(@Value("${gutenberg.rapidapi.key:}") String rapidApiKey) {
+    public GutenbergService(
+            @Value("${gutenberg.rapidapi.key:}") String rapidApiKey,
+            @Value("${gutenberg.gutendex.timeout-ms:3000}") int gutendexTimeoutMs) {
+        SimpleClientHttpRequestFactory gutendexFactory = new SimpleClientHttpRequestFactory();
+        gutendexFactory.setConnectTimeout(2000);
+        gutendexFactory.setReadTimeout(Math.max(500, gutendexTimeoutMs));
+        this.gutendexClient = RestClient.builder()
+                .baseUrl(GUTENDEX_BASE)
+                .requestFactory(gutendexFactory)
+                .build();
+
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(5000);
         factory.setReadTimeout(15000);
@@ -42,6 +56,7 @@ public class GutenbergService {
                 .requestFactory(factory)
                 .build();
         this.rapidApiKey = rapidApiKey == null ? "" : rapidApiKey.trim();
+        this.gutendexTimeoutMs = Math.max(500, gutendexTimeoutMs);
 
         this.cache = Collections.synchronizedMap(
                 new LinkedHashMap<>(16, 0.75f, false) {
@@ -73,14 +88,105 @@ public class GutenbergService {
             return guardada.pagina();
         }
 
-        GutenbergPaginaDTO resultados = consultarRapidApi(idioma, busqueda, pagina);
+        GutenbergPaginaDTO resultados;
+        boolean esEspanol = idioma == null || idioma.isBlank()
+                || "es".equalsIgnoreCase(idioma.trim());
+        if (esEspanol) {
+            try {
+                resultados = consultarGutendex(idioma, busqueda, pagina);
+            } catch (Exception e) {
+                log.warn("Gutendex no respondió en {} ms ({}); se usa RapidAPI como respaldo",
+                        gutendexTimeoutMs, e.getMessage());
+                resultados = consultarRapidApi(idioma, busqueda, pagina);
+            }
+        } else {
+            resultados = consultarRapidApi(idioma, busqueda, pagina);
+        }
         cache.put(clave, new EntradaCache(ahora.plus(TTL_CACHE), resultados));
         return resultados;
     }
 
+    private GutenbergPaginaDTO consultarGutendex(String idioma, String busqueda, int pagina) {
+        Map<?, ?> respuesta = gutendexClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/books")
+                        .queryParamIfPresent("languages",
+                                Optional.ofNullable(idioma).map(String::trim)
+                                        .filter(s -> !s.isBlank()))
+                        .queryParamIfPresent("search",
+                                Optional.ofNullable(busqueda).map(String::trim)
+                                        .filter(s -> !s.isBlank()))
+                        .queryParam("page", Math.max(1, pagina))
+                        .build())
+                .retrieve()
+                .body(Map.class);
+
+        if (respuesta == null) {
+            throw new IllegalStateException("Gutendex devolvió una respuesta vacía");
+        }
+
+        Object resultados = respuesta.get("results");
+        if (!(resultados instanceof List<?> lista)) {
+            throw new IllegalStateException("Gutendex devolvió un formato inesperado");
+        }
+
+        List<GutenbergLibroDTO> libros = new ArrayList<>();
+        for (Object item : lista) {
+            if (!(item instanceof Map<?, ?> doc)) continue;
+            GutenbergLibroDTO libro = mapearGutendex(doc, idioma);
+            if (libro != null) libros.add(libro);
+        }
+
+        boolean haySiguiente = respuesta.get("next") instanceof String next && !next.isBlank();
+        if (!haySiguiente) haySiguiente = libros.size() >= TAMANO_PAGINA;
+        return new GutenbergPaginaDTO(libros, haySiguiente);
+    }
+
+    private GutenbergLibroDTO mapearGutendex(Map<?, ?> doc, String idiomaSolicitado) {
+        Number id = obtenerNumero(doc, "id");
+        if (id == null) return null;
+        String titulo = obtenerTexto(doc, "title");
+        if (titulo == null || titulo.isBlank()) return null;
+
+        List<String> autores = new ArrayList<>();
+        if (doc.get("authors") instanceof List<?> listaAutores) {
+            for (Object autor : listaAutores) {
+                if (autor instanceof Map<?, ?> mapa) {
+                    String nombre = obtenerTexto(mapa, "name");
+                    if (nombre != null && !nombre.isBlank()) autores.add(nombre);
+                } else if (autor instanceof String texto && !texto.isBlank()) {
+                    autores.add(texto);
+                }
+            }
+        }
+
+        Map<?, ?> formats = doc.get("formats") instanceof Map<?, ?> mapa ? mapa : Map.of();
+        String idLibro = id.toString();
+        String epub = obtenerTexto(formats, "application/epub+zip");
+        String pdf = obtenerTexto(formats, "application/pdf");
+        String portada = obtenerTexto(formats, "image/jpeg");
+        if (epub == null) epub = "https://www.gutenberg.org/ebooks/" + idLibro + ".epub.images";
+
+        return new GutenbergLibroDTO(
+                idLibro,
+                titulo,
+                autores,
+                extraerPrimerIdioma(doc.get("languages"), null, idiomaSolicitado),
+                obtenerListaTexto(doc.get("subjects")),
+                null,
+                null,
+                null,
+                null,
+                portada,
+                epub,
+                pdf,
+                portada
+        );
+    }
+
     private GutenbergPaginaDTO consultarRapidApi(String idioma, String busqueda, int pagina) {
         if (rapidApiKey.isBlank()) {
-            throw new IllegalStateException("Falta configurar la variable GUTENBERG_RAPIDAPI_KEY en el entorno del backend.");
+            throw new IllegalStateException("Falta configurar gutenberg.rapidapi.key en application.properties del backend.");
         }
         try {
             Map<?, ?> respuesta = rapidApiClient.get()
@@ -98,12 +204,12 @@ public class GutenbergService {
                     .body(Map.class);
 
             if (respuesta == null) {
-                throw new IllegalStateException("Gutendex devolvió una respuesta vacía");
+                throw new IllegalStateException("RapidAPI devolvió una respuesta vacía");
             }
 
             Object resultados = respuesta.get("results");
             if (!(resultados instanceof List<?> lista)) {
-                throw new IllegalStateException("Gutendex devolvió un formato inesperado");
+                throw new IllegalStateException("RapidAPI devolvió un formato inesperado");
             }
 
             List<GutenbergLibroDTO> libros = new ArrayList<>();
@@ -120,7 +226,7 @@ public class GutenbergService {
             EntradaCache anterior = cache.get((idioma == null ? "" : idioma) + "|"
                     + (busqueda == null ? "" : busqueda.trim().toLowerCase(Locale.ROOT)) + "|" + pagina);
             if (anterior != null && !anterior.pagina().libros().isEmpty()) {
-                log.warn("Gutendex no responde ({}); se usa una página guardada en caché", e.getMessage());
+                log.warn("RapidAPI no respondió ({}); se usa una página guardada en caché", e.getMessage());
                 return anterior.pagina();
             }
             log.warn("RapidAPI Gutenberg no responde ({}); no se muestran libros de ejemplo", e.getMessage());
