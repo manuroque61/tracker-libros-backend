@@ -71,6 +71,12 @@ public class ComunidadController {
                 .body(comunidad.crearClub(usuarioActual.obtenerId(auth), datos));
     }
 
+    @DeleteMapping("/clubes/{clubId}")
+    public ResponseEntity<Void> eliminarClub(@PathVariable Long clubId, Authentication auth) {
+        comunidad.eliminarClub(usuarioActual.obtenerId(auth), clubId);
+        return ResponseEntity.noContent().build();
+    }
+
     @PostMapping("/clubes/{clubId}/invitaciones")
     public ClubRespuesta invitar(@PathVariable Long clubId, @Valid @RequestBody InvitarClub datos,
             Authentication auth) {

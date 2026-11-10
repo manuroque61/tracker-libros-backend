@@ -186,6 +186,20 @@ public class ComunidadService {
         else miembros.delete(invitacion);
     }
 
+    @Transactional
+    public void eliminarClub(Long usuarioId, Long clubId) {
+        club(clubId);
+        ClubMiembro miembro = miembro(clubId, usuarioId);
+        if (!"ADMIN".equals(miembro.rol) || miembro.estado != EstadoClubMiembro.ACTIVO) {
+            throw error(HttpStatus.FORBIDDEN, "Solo el administrador puede eliminar el club");
+        }
+        comentarios.limpiarTemasDelClub(clubId);
+        comentarios.borrarDelClub(clubId);
+        mensajes.borrarDelClub(clubId);
+        miembros.borrarDelClub(clubId);
+        clubes.deleteById(clubId);
+    }
+
     @Transactional(readOnly = true)
     public List<MiembroClub> miembros(Long usuarioId, Long clubId) {
         exigirMiembroActivo(clubId, usuarioId);

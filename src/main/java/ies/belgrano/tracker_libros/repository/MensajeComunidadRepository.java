@@ -3,11 +3,16 @@ package ies.belgrano.tracker_libros.repository;
 import ies.belgrano.tracker_libros.entity.MensajeComunidad;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface MensajeComunidadRepository extends JpaRepository<MensajeComunidad, Long> {
     List<MensajeComunidad> findTop100ByClubIdOrderByIdDesc(Long clubId);
+
+    @Modifying(clearAutomatically = true)
+    @Query("delete from MensajeComunidad m where m.club.id = :clubId")
+    void borrarDelClub(@Param("clubId") Long clubId);
 
     @Query("select m from MensajeComunidad m where m.club.id = :clubId and m.id > :despuesDe order by m.id asc")
     List<MensajeComunidad> nuevosDelClub(@Param("clubId") Long clubId, @Param("despuesDe") Long despuesDe);
