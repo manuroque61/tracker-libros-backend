@@ -17,6 +17,14 @@ spring.jpa.properties.hibernate.format_sql=true
 # Seguridad 
 security.jwt.secret=GENERAR_CLAVE_BASE64_DE_32_BYTES
 
+# Project Gutenberg
+# Clave propia de RapidAPI para el catálogo (inglés y respaldo de español).
+# Sin ella, el español funciona igual vía Gutendex; el inglés y el respaldo fallarán.
+# Nunca commitear valores reales en este archivo.
+gutenberg.rapidapi.key=
+# Timeout de Gutendex en milisegundos antes de caer a RapidAPI (opcional, por defecto 3000)
+# gutenberg.gutendex.timeout-ms=3000
+
 # Swagger: en produccion definir SPRINGDOC_ENABLED=false
 springdoc.api-docs.enabled=${SPRINGDOC_ENABLED:true}
 springdoc.swagger-ui.enabled=${SPRINGDOC_ENABLED:true}
