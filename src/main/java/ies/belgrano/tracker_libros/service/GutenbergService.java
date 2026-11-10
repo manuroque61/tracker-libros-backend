@@ -1,6 +1,7 @@
 package ies.belgrano.tracker_libros.service;
 
 import ies.belgrano.tracker_libros.dto.GutenbergLibroDTO;
+import ies.belgrano.tracker_libros.dto.GutenbergPaginaDTO;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -9,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import org.springframework.beans.factory.annotation.Value;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -23,20 +25,23 @@ public class GutenbergService {
 
     private static final int MAX_CACHE = 100;
     private static final Duration TTL_CACHE = Duration.ofMinutes(10);
+    private static final int TAMANO_PAGINA = 32;
+    private static final String RAPIDAPI_HOST = "project-gutenberg-free-books-api1.p.rapidapi.com";
+    private record EntradaCache(Instant expira, GutenbergPaginaDTO pagina) {}
 
-    private record EntradaCache(Instant expira, List<GutenbergLibroDTO> libros) {}
-
-    private final RestClient restClient;
+    private final RestClient rapidApiClient;
+    private final String rapidApiKey;
     private final Map<String, EntradaCache> cache;
 
-    public GutenbergService() {
+    public GutenbergService(@Value("${gutenberg.rapidapi.key:}") String rapidApiKey) {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(5000);
-        factory.setReadTimeout(8000);
-        this.restClient = RestClient.builder()
-                .baseUrl("https://gutendex.com")
+        factory.setReadTimeout(15000);
+        this.rapidApiClient = RestClient.builder()
+                .baseUrl("https://" + RAPIDAPI_HOST)
                 .requestFactory(factory)
                 .build();
+        this.rapidApiKey = rapidApiKey == null ? "" : rapidApiKey.trim();
 
         this.cache = Collections.synchronizedMap(
                 new LinkedHashMap<>(16, 0.75f, false) {
@@ -49,194 +54,127 @@ public class GutenbergService {
     }
 
     public List<GutenbergLibroDTO> buscarLibros(String idioma, String busqueda) {
+        return buscarPagina(idioma, busqueda, 1).libros();
+    }
+
+    public List<GutenbergLibroDTO> buscarLibros(String idioma, String busqueda, int pagina) {
+        return buscarPagina(idioma, busqueda, pagina).libros();
+    }
+
+    public GutenbergPaginaDTO buscarPagina(String idioma, String busqueda, int pagina) {
 
         String clave = (idioma == null ? "" : idioma) + "|"
-                + (busqueda == null ? "" : busqueda.trim().toLowerCase(Locale.ROOT));
+                + (busqueda == null ? "" : busqueda.trim().toLowerCase(Locale.ROOT)) + "|" + pagina;
 
         Instant ahora = Instant.now();
         EntradaCache guardada = cache.get(clave);
 
         if (guardada != null && guardada.expira().isAfter(ahora)) {
-            return guardada.libros();
+            return guardada.pagina();
         }
 
-        List<GutenbergLibroDTO> resultados = consultarGutendex(idioma, busqueda);
+        GutenbergPaginaDTO resultados = consultarRapidApi(idioma, busqueda, pagina);
         cache.put(clave, new EntradaCache(ahora.plus(TTL_CACHE), resultados));
         return resultados;
     }
 
-    private List<GutenbergLibroDTO> consultarGutendex(String idioma, String busqueda) {
+    private GutenbergPaginaDTO consultarRapidApi(String idioma, String busqueda, int pagina) {
+        if (rapidApiKey.isBlank()) {
+            throw new IllegalStateException("Falta configurar la variable GUTENBERG_RAPIDAPI_KEY en el entorno del backend.");
+        }
         try {
-            Map<?, ?> respuesta = restClient.get()
+            Map<?, ?> respuesta = rapidApiClient.get()
                     .uri(uriBuilder -> uriBuilder
                             .path("/books")
-                            .queryParam("language", idioma)
-                            .queryParam("limit", 200)
+                            .queryParam("include_removed", "true")
+                            .queryParam("page_size", TAMANO_PAGINA)
+                            .queryParam("page", Math.max(1, pagina))
+                            .queryParamIfPresent("q", java.util.Optional.ofNullable(busqueda)
+                                    .map(String::trim).filter(s -> !s.isBlank()))
                             .build())
+                    .header("x-rapidapi-host", RAPIDAPI_HOST)
+                    .header("x-rapidapi-key", rapidApiKey)
                     .retrieve()
                     .body(Map.class);
 
             if (respuesta == null) {
-                log.warn("Gutendex devolvio una respuesta vacia; "
-                        + "se usan libros de ejemplo");
-                return obtenerLibrosEjemplo(busqueda);
+                throw new IllegalStateException("Gutendex devolvió una respuesta vacía");
             }
 
             Object resultados = respuesta.get("results");
             if (!(resultados instanceof List<?> lista)) {
-                log.warn("Gutendex devolvio un formato inesperado; "
-                        + "se usan libros de ejemplo");
-                return obtenerLibrosEjemplo(busqueda);
+                throw new IllegalStateException("Gutendex devolvió un formato inesperado");
             }
 
             List<GutenbergLibroDTO> libros = new ArrayList<>();
-            int anioActual = java.time.Year.now().getValue();
-
             for (Object item : lista) {
                 if (!(item instanceof Map<?, ?> doc)) continue;
-
-                String titulo = obtenerTexto(doc, "title");
-                String fechaPublicacion = obtenerTexto(doc, "publication_date");
-
-                boolean dominioPublico = false;
-                Object autoresObj = doc.get("authors");
-                if (autoresObj instanceof List<?> autores) {
-                    int maxMuerte = 0;
-                    boolean tieneMuerte = false;
-                    for (Object a : autores) {
-                        if (a instanceof Map<?, ?> autorMap) {
-                            Object muerte = autorMap.get("death_year");
-                            if (muerte instanceof String m && !m.isBlank()) {
-                                try {
-                                    int año = Integer.parseInt(m);
-                                    if (año > maxMuerte) maxMuerte = año;
-                                    tieneMuerte = true;
-                                } catch (NumberFormatException e) {
-                                }
-                            }
-                        }
-                    }
-                    if (tieneMuerte && (maxMuerte + 70 <= anioActual)) {
-                        dominioPublico = true;
-                    } else if (!tieneMuerte && fechaPublicacion != null) {
-                        try {
-                            int pubYear = Integer.parseInt(fechaPublicacion.substring(0, 4));
-                            if (pubYear + 70 <= anioActual) dominioPublico = true;
-                        } catch (Exception e) {
-                        }
-                    }
-                }
-
-                if (!dominioPublico) continue;
-
-                if (busqueda != null && !busqueda.isBlank()) {
-                    String texto = (titulo != null ? titulo : "") + " ";
-                    if (autoresObj instanceof List<?> autores) {
-                        for (Object a : autores) {
-                            if (a instanceof Map<?, ?> autorMap) {
-                                texto += obtenerTexto(autorMap, "name") + " ";
-                            }
-                        }
-                    }
-                    if (!texto.toLowerCase().contains(busqueda.toLowerCase())) continue;
-                }
-
-                String portada = null;
-                Object formats = doc.get("formats");
-                if (formats instanceof Map<?, ?> fmtMap) {
-                    Object epub = fmtMap.get("application/epub+zip");
-                    Object pdf = fmtMap.get("application/pdf");
-                    portada = (epub instanceof String) ? (String) epub :
-                            (pdf instanceof String ? (String) pdf : null);
-                }
-
-                String urlEpub = null;
-                String urlPdf = null;
-                if (formats instanceof Map<?, ?> fmtMap2) {
-                    Object epub = fmtMap2.get("application/epub+zip");
-                    Object pdf = fmtMap2.get("application/pdf");
-                    urlEpub = (epub instanceof String) ? (String) epub : null;
-                    urlPdf = (pdf instanceof String) ? (String) pdf : null;
-                }
-
-                List<String> nombresAutores = new ArrayList<>();
-                if (autoresObj instanceof List<?> autores) {
-                    for (Object a : autores) {
-                        if (a instanceof Map<?, ?> autorMap) {
-                            String nombre = obtenerTexto(autorMap, "name");
-                            if (nombre != null) nombresAutores.add(nombre);
-                        }
-                    }
-                }
-
-                String isbn = null;
-                Object isbns = doc.get("isbn");
-                if (isbns instanceof List<?> isbnLista && !isbnLista.isEmpty()) {
-                    Object primero = isbnLista.get(0);
-                    if (primero instanceof String s) isbn = s;
-                }
-
-                String idiomaLibro = obtenerTexto(doc, "languages") != null ?
-                        extraerPrimerIdioma(doc.get("languages")) : idioma;
-
-                libros.add(new GutenbergLibroDTO(
-                        String.valueOf(obtenerNumero(doc, "id")),
-                        titulo,
-                        nombresAutores,
-                        idiomaLibro,
-                        null,
-                        isbn,
-                        fechaPublicacion,
-                        null,
-                        null,
-                        null,
-                        urlEpub,
-                        urlPdf,
-                        portada
-                ));
+                GutenbergLibroDTO libro = mapearRapidApi(doc, idioma);
+                if (libro != null) libros.add(libro);
             }
 
-            if (!libros.isEmpty()) {
-                return libros;
-            }
+            boolean haySiguiente = respuesta.get("next") instanceof String next && !next.isBlank();
+            if (!haySiguiente) haySiguiente = libros.size() >= TAMANO_PAGINA;
+            return new GutenbergPaginaDTO(libros, haySiguiente);
         } catch (Exception e) {
-            log.warn("Gutendex no responde ({}); "
-                    + "se usan libros de ejemplo", e.getMessage());
+            EntradaCache anterior = cache.get((idioma == null ? "" : idioma) + "|"
+                    + (busqueda == null ? "" : busqueda.trim().toLowerCase(Locale.ROOT)) + "|" + pagina);
+            if (anterior != null && !anterior.pagina().libros().isEmpty()) {
+                log.warn("Gutendex no responde ({}); se usa una página guardada en caché", e.getMessage());
+                return anterior.pagina();
+            }
+            log.warn("RapidAPI Gutenberg no responde ({}); no se muestran libros de ejemplo", e.getMessage());
+            throw new IllegalStateException("No se pudo consultar el catálogo Gutenberg en RapidAPI. Revisa la clave, los límites del plan y vuelve a intentar.", e);
         }
-        return obtenerLibrosEjemplo(busqueda);
     }
 
-    private List<GutenbergLibroDTO> obtenerLibrosEjemplo(String busqueda) {
-        List<GutenbergLibroDTO> ejemplos = new ArrayList<>();
-        ejemplos.add(new GutenbergLibroDTO(
-                "1342", "Orgullo y prejuicio",
-                List.of("Jane Austen"), "es", null, null, "1813",
-                "Novela de Jane Austen publicada en 1813.", null, null,
-                null, null, null));
-        ejemplos.add(new GutenbergLibroDTO(
-                "11", "Alicia en el país de las maravillas",
-                List.of("Lewis Carroll"), "es", null, null, "1865",
-                "Obra clásica de Lewis Carroll.", null, null,
-                null, null, null));
-        ejemplos.add(new GutenbergLibroDTO(
-                "84", "Frankenstein",
-                List.of("Mary Shelley"), "es", null, null, "1818",
-                "Novela gótica de Mary Shelley.", null, null,
-                null, null, null));
-        ejemplos.add(new GutenbergLibroDTO(
-                "2701", "Moby Dick",
-                List.of("Herman Melville"), "es", null, null, "1851",
-                "Novela de Herman Melville sobre la caza de ballenas.", null, null,
-                null, null, null));
+    private GutenbergLibroDTO mapearRapidApi(Map<?, ?> doc, String idiomaSolicitado) {
+        Number id = obtenerNumero(doc, "id");
+        if (id == null) return null;
+        String titulo = obtenerTexto(doc, "title");
+        if (titulo == null || titulo.isBlank()) return null;
 
-        if (busqueda == null || busqueda.isBlank()) {
-            return ejemplos;
+        List<String> autores = new ArrayList<>();
+        Object autoresRaw = doc.get("authors");
+        if (autoresRaw instanceof List<?> listaAutores) {
+            for (Object autor : listaAutores) {
+                String nombre = autor instanceof Map<?, ?> mapa
+                        ? obtenerTexto(mapa, "name")
+                        : autor instanceof String texto ? texto : null;
+                if (nombre != null && !nombre.isBlank()) autores.add(nombre);
+            }
         }
-        String filtro = busqueda.toLowerCase();
-        return ejemplos.stream()
-                .filter(l -> l.titulo().toLowerCase().contains(filtro)
-                        || l.autores().stream().anyMatch(a -> a.toLowerCase().contains(filtro)))
-                .toList();
+
+        Map<?, ?> formats = doc.get("formats") instanceof Map<?, ?> mapa ? mapa : Map.of();
+        String idLibro = id.toString();
+        String epub = obtenerTexto(formats, "application/epub+zip");
+        String pdf = obtenerTexto(formats, "application/pdf");
+        String portada = obtenerTexto(doc, "cover_image");
+        if (portada == null) portada = obtenerTexto(formats, "image/jpeg");
+        if (epub == null) epub = "https://www.gutenberg.org/ebooks/" + idLibro + ".epub.images";
+
+        Object isbnRaw = doc.get("isbn");
+        String isbn = isbnRaw instanceof String texto ? texto
+                : isbnRaw instanceof List<?> lista && !lista.isEmpty() && lista.get(0) instanceof String texto ? texto
+                : null;
+        String fecha = obtenerTexto(doc, "issued");
+        if (fecha == null) fecha = obtenerTexto(doc, "publication_date");
+
+        return new GutenbergLibroDTO(
+                idLibro,
+                titulo,
+                autores,
+                extraerPrimerIdioma(doc.get("languages"), doc.get("language"), idiomaSolicitado),
+                obtenerListaTexto(doc.get("subjects")),
+                isbn,
+                fecha,
+                obtenerTexto(doc, "summary"),
+                null,
+                portada,
+                epub,
+                pdf,
+                portada
+        );
     }
 
     private String obtenerTexto(Map<?, ?> datos, String clave) {
@@ -244,12 +182,18 @@ public class GutenbergService {
         return valor instanceof String texto ? texto : null;
     }
 
-    private String extraerPrimerIdioma(Object valor) {
+    private String extraerPrimerIdioma(Object valor, Object idioma, String predeterminado) {
+        if (idioma instanceof String texto && !texto.isBlank()) return texto;
         if (valor instanceof List<?> lista && !lista.isEmpty()) {
             Object primero = lista.get(0);
             if (primero instanceof String s) return s;
         }
-        return "es";
+        return predeterminado == null ? "es" : predeterminado;
+    }
+
+    private List<String> obtenerListaTexto(Object valor) {
+        if (!(valor instanceof List<?> lista)) return List.of();
+        return lista.stream().filter(String.class::isInstance).map(String.class::cast).toList();
     }
 
     private Number obtenerNumero(Map<?, ?> datos, String clave) {

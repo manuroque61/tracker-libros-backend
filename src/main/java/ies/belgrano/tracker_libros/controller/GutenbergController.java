@@ -1,12 +1,11 @@
 package ies.belgrano.tracker_libros.controller;
 
-import ies.belgrano.tracker_libros.dto.GutenbergLibroDTO;
+import ies.belgrano.tracker_libros.dto.GutenbergPaginaDTO;
 import ies.belgrano.tracker_libros.service.GutenbergService;
 import ies.belgrano.tracker_libros.service.RateLimitService;
 
 import jakarta.servlet.http.HttpServletRequest;
 import java.time.Duration;
-import java.util.List;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -28,17 +27,16 @@ public class GutenbergController {
     }
 
     @GetMapping("/buscar")
-    public ResponseEntity<List<GutenbergLibroDTO>> buscar(
+    public ResponseEntity<GutenbergPaginaDTO> buscar(
             @RequestParam(defaultValue = "es") String idioma,
             @RequestParam(required = false) String busqueda,
+            @RequestParam(defaultValue = "1") int pagina,
             HttpServletRequest request) {
 
         String clave = "gutenberg|" + request.getRemoteAddr();
         rateLimitService.verificar(clave, MAX_PETICIONES);
         rateLimitService.contar(clave, VENTANA);
 
-        List<GutenbergLibroDTO> libros =
-                gutenbergService.buscarLibros(idioma, busqueda);
-        return ResponseEntity.ok(libros);
+        return ResponseEntity.ok(gutenbergService.buscarPagina(idioma, busqueda, pagina));
     }
 }

@@ -30,6 +30,8 @@ public interface LecturaRepository
             EstadoLectura estado
     );
 
+    List<Lectura> findByUsuario_IdInAndEstado(List<Long> usuarioIds, EstadoLectura estado);
+
     // Filtrar las lecturas de un usuario por formato
     List<Lectura> findByUsuario_IdAndFormato(
             Long usuarioId,
